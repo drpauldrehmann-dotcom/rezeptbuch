@@ -766,11 +766,17 @@ function vEinkauf(){
   <label class="row small muted" style="margin:6px 0 4px"><input type="checkbox" ${S.zeigeVorrat?"checked":""} onchange="S.zeigeVorrat=this.checked;render()"> Vorratszutaten anzeigen (Salz, Öl, Gewürze …)</label>
   <div class="panel" style="margin-top:8px">${l.length? l.map(x=>`<label class="check ${S.haken.has(x.key)?"done":""}"><input type="checkbox" ${S.haken.has(x.key)?"checked":""} onchange="hTog(${esc(JSON.stringify(x.key))})"><div style="flex:1"><div class="lbl">${esc(artikelText(x))}${x.vorrat?' <span class="badge amber">Vorrat</span>':""}</div><div class="src">${esc([...x.quellen].join(", "))}</div></div>${x.extra?`<button class="icon-btn" style="width:32px;height:32px" onclick="event.preventDefault();extraWeg(${esc(JSON.stringify(x.name))})">✕</button>`:""}</label>`).join("") : `<div class="muted">Leer.</div>`}</div>
   ${l.length? `<button class="btn green block" style="margin-top:16px" ${offen.length?"":"disabled"} onclick="senden()" id="sendBtn">An To-Do „Einkaufsliste“ senden (${offen.length})</button>
+  <button class="btn block" style="margin-top:8px" ${offen.length?"":"disabled"} onclick="teilen()">📤 Liste teilen oder kopieren</button>
   <p class="muted small" style="text-align:center">Abgehakt = schon zu Hause. Artikel, die schon offen auf der To-Do-Liste stehen, werden nicht doppelt angelegt.</p>`:""}`;
 }
 function hTog(k){ S.haken.has(k)? S.haken.delete(k) : S.haken.add(k); store.set("haken",[...S.haken]); render(); }
 function extraAdd(){ const v=$("#extraIn").value.trim(); if(!v) return; S.extra.push(v); store.set("extra",S.extra); render(); }
 function extraWeg(n){ S.extra=S.extra.filter(x=>x!==n); store.set("extra",S.extra); render(); }
+async function teilen(){
+  const txt = "Einkaufsliste:\n" + einkaufListe().filter(x=>!S.haken.has(x.key)).map(x=>"• "+artikelText(x)).join("\n");
+  try { if(navigator.share){ await navigator.share({ text: txt }); return; } } catch(e){ if(e && e.name==="AbortError") return; }
+  try { await navigator.clipboard.writeText(txt); toast("Liste kopiert 📋"); } catch(e){ toast("Kopieren nicht möglich."); }
+}
 async function senden(){
   const artikel = einkaufListe().filter(x=>!S.haken.has(x.key)).map(artikelText);
   const b=$("#sendBtn"); b.disabled=true; b.innerHTML='<span class="spin"></span> Wird gesendet …';
