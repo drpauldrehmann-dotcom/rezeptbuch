@@ -178,7 +178,7 @@ const S = {
   laden: false, fehler: "",
   q: "", kat: "", filter: store.get("filter", {}),
   fridge: new Set(store.get("fridge", [])), fq: "", fNurHaupt: true,
-  haken: new Set(store.get("haken", [])), extra: store.get("extra", []), zeigeVorrat: false,
+  haken: new Set(store.get("haken", [])), extra: store.get("extra", []), korb: store.get("korb", []), pos: {}, lastRez: "#/entdecken", fresh: false, zeigeVorrat: false,
   portionen: {}, foto: {}, cook: null, timers: [], wake: null
 };
 
@@ -253,20 +253,32 @@ async function speichern(records){
 
 // ---------- Router ----------
 function route(){ const h=(location.hash||"#/entdecken").slice(2).split("/"); return { v:h[0]||"entdecken", id:h[1]||"" }; }
-function go(h){ location.hash = h; }
-window.addEventListener("hashchange", () => { render(); window.scrollTo(0,0); });
+function go(h){ S.fresh = true; location.hash = h; }
+function goTab(k){
+  const v = route().v; const fam = ["entdecken","rezept","zufall"];
+  if(k==="entdecken"){ if(fam.includes(v)) go("#/entdecken"); else { S.fresh=false; location.hash = S.lastRez || "#/entdecken"; } }
+  else { S.fresh=false; location.hash = "#/"+k; }
+}
+let posTimer=null;
+window.addEventListener("scroll", () => { const h=location.hash||"#/entdecken"; clearTimeout(posTimer); posTimer=setTimeout(()=>{ S.pos[h]=window.scrollY; }, 80); }, {passive:true});
+window.addEventListener("hashchange", () => {
+  const h=location.hash||"#/entdecken"; const frisch=S.fresh; S.fresh=false;
+  render();
+  const y = (!frisch || h==="#/entdecken") ? (S.pos[h]||0) : 0;
+  window.scrollTo(0, y); requestAnimationFrame(()=>window.scrollTo(0, y));
+});
 document.addEventListener("visibilitychange", () => { if(document.visibilityState==="visible" && S.key) laden(true); });
 
 const IC = {"entdecken": "<svg viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M3 11h18\"/><path d=\"M5 11a7 7 0 0 0 14 0\"/><path d=\"M8 7c0-1.5 1-2 1-3.5M12 7c0-1.5 1-2 1-3.5M16 7c0-1.5 1-2 1-3.5\"/><path d=\"M9 21h6\"/></svg>", "plan": "<svg viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><rect x=\"3\" y=\"4.5\" width=\"18\" height=\"16\" rx=\"3.5\"/><path d=\"M3 9.5h18M8 2.5v4M16 2.5v4\"/><path d=\"m9 15 2 2 4-4\"/></svg>", "kuehlschrank": "<svg viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><rect x=\"5\" y=\"2.5\" width=\"14\" height=\"19\" rx=\"3\"/><path d=\"M5 10h14M8.5 6v1.5M8.5 13v3\"/></svg>", "einkauf": "<svg viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M5 8h14l-1.3 11.2a2 2 0 0 1-2 1.8H8.3a2 2 0 0 1-2-1.8z\"/><path d=\"M9 8V6.5a3 3 0 0 1 6 0V8\"/></svg>"};
 function tabbar(v){
   const t=[["entdecken",IC.entdecken,"Rezepte"],["plan",IC.plan,"Plan"],["kuehlschrank",IC.kuehlschrank,"Kühlschrank"],["einkauf",IC.einkauf,"Einkauf"]];
   const n = einkaufListe().filter(x=>!S.haken.has(x.key)).length;
-  $("#tabbar").innerHTML = t.map(([k,i,l]) => `<button class="${(v===k||((v==="rezept"||v==="zufall")&&k==="entdecken"))?"on":""}" onclick="go('#/${k}')"><span class="i">${i}</span>${l}${k==="einkauf"&&n? `<span class="cnt">${n}</span>`:""}</button>`).join("");
+  $("#tabbar").innerHTML = t.map(([k,i,l]) => `<button class="${(v===k||((v==="rezept"||v==="zufall")&&k==="entdecken"))?"on":""}" onclick="goTab('${k}')"><span class="i">${i}</span>${l}${k==="einkauf"&&n? `<span class="cnt">${n}</span>`:""}</button>`).join("");
   $("#tabbar").style.display = (S.key && v!=="kochen")? "flex" : "none";
 }
 
 function render(){
-  const r = route(); tabbar(r.v);
+  const r = route(); if(["entdecken","rezept","zufall"].includes(r.v)) S.lastRez = location.hash || "#/entdecken"; tabbar(r.v);
   const app = $("#app");
   if(!S.key) return app.innerHTML = vSetup();
   if(r.v!=="kochen" && S.cook){ stopCook(); }
@@ -323,10 +335,12 @@ function vEntdecken(){
     <input class="search" placeholder="Suchen: Name oder Zutat …" value="${esc(S.q)}" oninput="S.q=this.value;upd()" id="q">
     <div class="chips" style="margin-top:10px">${ch("haupt","Hauptgerichte")}${ch("mealprep","🥡 Mealprep")}${ch("fav","❤️ Favoriten")}${ch("schnell","≤ 30 Min.")}${ch("einfach","einfach")}${ch("foto","📷 mit Foto")}</div>
     <div class="chips"><button class="chip ${!S.kat?"on":""}" onclick="S.kat='';render()">Alle</button>${kats.map(k=>`<button class="chip ${S.kat===k?"on":""}" onclick="S.kat=${esc(JSON.stringify(k))};render()">${EMOJI[k]||""} ${esc(k)}</button>`).join("")}</div>
-    <div class="row" style="margin:6px 0 12px"><span class="muted small" style="font-weight:600">${liste.length} Rezepte</span></div>
+    <div class="row" style="margin:6px 0 12px;min-height:36px"><span class="muted small" style="font-weight:600">${liste.length} Rezepte</span><span class="spacer"></span>${filterAktiv()? `<button class="btn ghost small" style="padding:8px 4px" onclick="filterReset()">✕ Alle Filter löschen</button>`:""}</div>
     <div id="liste">${liste.length? `<div class="grid">${liste.map(karte).join("")}</div>` : `<div class="empty">${S.rezepte.length? "Nichts gefunden." : (S.fehler? esc(S.fehler) : "Lade Rezepte …")}</div>`}</div>`;
 }
 function upd(){ const l=gefiltert(); $("#liste").innerHTML = l.length? `<div class="grid">${l.map(karte).join("")}</div>` : `<div class="empty">Nichts gefunden.</div>`; }
+function filterAktiv(){ return !!(S.q.trim() || S.kat || Object.values(S.filter).some(Boolean)); }
+function filterReset(){ S.q=""; S.kat=""; S.filter={}; store.set("filter",{}); render(); }
 function tog(k){ S.filter[k]=!S.filter[k]; store.set("filter",S.filter); render(); }
 // ---------- Überrasch mich ----------
 const ARTEN = [
@@ -434,6 +448,7 @@ function vRezept(id){
       <button class="btn primary" style="flex:1" ${r.schritte.length?"":"disabled"} onclick="go('#/kochen/${id}')">👩‍🍳 Kochen starten</button>
       <label class="btn" style="display:inline-flex;align-items:center;gap:6px">📷 Foto<input type="file" accept="image/*" hidden onchange="fotoHoch('${id}', this)"></label>
     </div>
+    <button class="btn block" style="margin-top:8px" ${r.zutaten.length?"":"disabled"} onclick="korbSheet('${id}')">🛒 Zutaten in den Einkaufskorb${S.korb.some(k=>k.id===id)?' <span class="badge" style="margin-left:4px">im Korb</span>':""}</button>
     <h2>Einplanen</h2>
     <div class="seg">${SLOTS.map(([k,l])=>`<button class="${r.geplant===k?"on":""}" onclick="planen('${id}','${k}')">${k==="Mealprep Montag"?"Mealprep Mo":l}</button>`).join("")}<button class="${!r.geplant?"on":""}" onclick="planen('${id}',null)">–</button></div>
     <div class="row" style="justify-content:space-between;margin-top:22px"><h2 style="margin:0">Zutaten</h2>
@@ -583,6 +598,36 @@ function kuehlTreffer(){
   }).filter(t=>t.da.length).sort((a,b)=> a.fehlt.length-b.fehlt.length || b.anteil-a.anteil);
 }
 
+
+// ---------- Einkaufskorb aus Rezept ----------
+function korbSheet(id){
+  const r=byId(id); const basis=r.portionen||2; const p=S.portionen[id]||basis; const fak=p/basis;
+  const items = r.zutaten.map((z,i)=>({ i, z:z.z, e:z.e||"", m: z.m==null? null : z.m*fak, n:z.n, g:z.g, v:!!z.v }));
+  const da = new Set(items.filter(x=>x.v).map(x=>x.i));
+  const d=document.createElement("div"); d.className="sheet"; d.onclick=e=>{ if(e.target===d) d.remove(); };
+  const zeichne = () => {
+    const rest = items.length-da.size; let g=null;
+    d.innerHTML=`<div class="in"><h2 style="margin:4px 0 2px">Was ist schon da?</h2>
+      <p class="muted small" style="margin:0 0 6px">${esc(r.name)} · ${p} Portion${p===1?"":"en"} – hake ab, was ihr zu Hause habt.</p>
+      <div class="row" style="margin-bottom:4px"><button class="btn ghost small" style="padding:6px 0" data-a="keins">Nichts da</button><span class="spacer"></span><button class="btn ghost small" style="padding:6px 0" data-a="vorrat">Nur Vorrat da</button></div>
+      <div class="panel">${items.map(x=>{ let h=""; if((x.g||"")!==g){ g=x.g||""; if(g) h=`<div class="ing"><div class="grp" style="padding:12px 0 2px">${esc(g)}</div></div>`; }
+        return h+`<label class="check ${da.has(x.i)?"done":""}"><input type="checkbox" data-i="${x.i}" ${da.has(x.i)?"checked":""}><div style="flex:1"><div class="lbl">${esc(x.z)}${x.m!=null? " – "+esc(fmtAmt(x.m,x.e)):""}</div>${x.n?`<div class="src">${esc(x.n)}</div>`:""}</div>${da.has(x.i)?'<span class="badge">da</span>':""}</label>`; }).join("")}</div>
+      <div style="position:sticky;bottom:calc(-20px - var(--safe-b));background:var(--bg);margin:0 -20px;padding:12px 20px calc(var(--safe-b) + 8px)"><button class="btn primary block" data-a="ok" ${rest?"":"disabled"}>${rest} Zutat${rest===1?"":"en"} in den Korb</button>
+      <button class="btn ghost block" data-a="x">Abbrechen</button></div></div>`;
+    d.querySelectorAll("[data-i]").forEach(c=>c.onchange=()=>{ const i=+c.dataset.i; da.has(i)? da.delete(i) : da.add(i); const sc=d.querySelector(".in").scrollTop; zeichne(); d.querySelector(".in").scrollTop=sc; });
+    d.querySelector('[data-a="keins"]').onclick=()=>{ da.clear(); zeichne(); };
+    d.querySelector('[data-a="vorrat"]').onclick=()=>{ da.clear(); items.filter(x=>x.v).forEach(x=>da.add(x.i)); zeichne(); };
+    d.querySelector('[data-a="x"]').onclick=()=>d.remove();
+    d.querySelector('[data-a="ok"]').onclick=()=>{
+      const zut = items.filter(x=>!da.has(x.i)).map(x=>({ z:x.z, e:x.e, m:x.m }));
+      S.korb = S.korb.filter(k=>k.id!==id); S.korb.push({ id, name:r.name, portionen:p, zutaten:zut }); store.set("korb", S.korb);
+      zut.forEach(z=>S.haken.delete(z.z.trim().toLowerCase()+"|"+(z.e||""))); store.set("haken",[...S.haken]);
+      d.remove(); render(); toast(`🛒 ${zut.length} Zutat${zut.length===1?"":"en"} im Einkaufskorb`);
+    };
+  };
+  zeichne(); document.body.appendChild(d);
+}
+function korbWeg(id){ S.korb=S.korb.filter(k=>k.id!==id); store.set("korb",S.korb); render(); }
 // ---------- Einkauf ----------
 function einkaufListe(){
   const map = new Map();
@@ -597,6 +642,14 @@ function einkaufListe(){
       x.quellen.add(r.name); map.set(key, x);
     }
   }
+  for(const k of S.korb){
+    for(const z of k.zutaten){
+      const name = z.z.trim(); const e = z.e||""; const key = (name.toLowerCase()+"|"+e);
+      const x = map.get(key) || { key, name, e, m:0, unbestimmt:false, quellen:new Set(), vorrat:false };
+      if(z.m==null) x.unbestimmt=true; else x.m += z.m;
+      x.quellen.add(k.name); map.set(key, x);
+    }
+  }
   for(const e of S.extra) map.set("extra|"+e, { key:"extra|"+e, name:e, e:"", m:0, unbestimmt:true, quellen:new Set(["selbst ergänzt"]), extra:true });
   return [...map.values()].sort((a,b)=> (a.vorrat-b.vorrat) || a.name.localeCompare(b.name,"de"));
 }
@@ -605,8 +658,10 @@ function artikelText(x){ const m = x.m && !FEIN.includes(x.e)? Math.ceil(x.m-0.0
 function vEinkauf(){
   const l = einkaufListe(); const offen = l.filter(x=>!S.haken.has(x.key));
   const geplant = S.rezepte.filter(r=>r.geplant);
-  return `<h1>Einkaufsliste</h1>
-  ${geplant.length? `<p class="muted" style="margin-top:-4px">Aus ${geplant.length} geplanten Rezept${geplant.length===1?"":"en"}. Hake ab, was schon da ist – der Rest geht an Microsoft To Do.</p>` : `<div class="empty">Noch nichts im Wochenplan.<br><br><button class="btn" onclick="go('#/plan')">Zum Wochenplan</button></div>`}
+  const quellen = [geplant.length? `${geplant.length} geplanten Rezept${geplant.length===1?"":"en"}` : "", S.korb.length? `${S.korb.length} Rezept${S.korb.length===1?"":"en"} im Korb` : ""].filter(Boolean).join(" und ");
+  return `<h1>Einkaufskorb</h1>
+  ${quellen? `<p class="muted" style="margin-top:-4px">Aus ${quellen}. Hake ab, was schon da ist – der Rest geht an Microsoft To Do.</p>` : `<div class="empty">Der Korb ist leer.<br>Plane Gerichte im Wochenplan oder tippe in einem Rezept auf „Zutaten in den Einkaufskorb“.<br><br><button class="btn" onclick="go('#/plan')">Zum Wochenplan</button></div>`}
+  ${S.korb.length? `<div class="row wrap" style="margin:4px 0 6px">${S.korb.map(k=>`<button class="chip" onclick="korbWeg('${k.id}')">🛒 ${esc(k.name)} · ${k.portionen} P. ✕</button>`).join("")}</div>`:""}
   <div class="row" style="margin:8px 0"><input class="search" id="extraIn" placeholder="Etwas ergänzen, z. B. Hafermilch" onkeydown="if(event.key==='Enter')extraAdd()"><button class="btn" onclick="extraAdd()">＋</button></div>
   <label class="row small muted" style="margin:6px 0 4px"><input type="checkbox" ${S.zeigeVorrat?"checked":""} onchange="S.zeigeVorrat=this.checked;render()"> Vorratszutaten anzeigen (Salz, Öl, Gewürze …)</label>
   <div class="panel" style="margin-top:8px">${l.length? l.map(x=>`<label class="check ${S.haken.has(x.key)?"done":""}"><input type="checkbox" ${S.haken.has(x.key)?"checked":""} onchange="hTog(${esc(JSON.stringify(x.key))})"><div style="flex:1"><div class="lbl">${esc(artikelText(x))}${x.vorrat?' <span class="badge amber">Vorrat</span>':""}</div><div class="src">${esc([...x.quellen].join(", "))}</div></div>${x.extra?`<button class="icon-btn" style="width:32px;height:32px" onclick="event.preventDefault();extraWeg(${esc(JSON.stringify(x.name))})">✕</button>`:""}</label>`).join("") : `<div class="muted">Leer.</div>`}</div>
@@ -622,7 +677,7 @@ async function senden(){
   try {
     const j = await api("einkauf", { artikel });
     toast(`✓ ${j.angelegt} Artikel in To Do angelegt` + (j.schon_auf_liste&&j.schon_auf_liste.length? `, ${j.schon_auf_liste.length} standen schon drauf` : ""), 4000);
-    einkaufListe().forEach(x=>S.haken.add(x.key)); store.set("haken",[...S.haken]); S.extra=[]; store.set("extra",[]); render();
+    einkaufListe().forEach(x=>S.haken.add(x.key)); store.set("haken",[...S.haken]); S.extra=[]; store.set("extra",[]); S.korb=[]; store.set("korb",[]); render();
   } catch(e){ toast("Senden fehlgeschlagen: "+e.message, 4500); b.disabled=false; b.textContent="Nochmal versuchen"; }
 }
 
