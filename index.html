@@ -147,6 +147,12 @@ input[type=checkbox]{accent-color:var(--accent)}
 .fridge-res{display:flex;gap:12px;align-items:center;padding:8px;background:var(--card);border-radius:18px;margin-bottom:8px;box-shadow:var(--shadow)}
 .bar{height:6px;border-radius:99px;background:var(--line);overflow:hidden;width:64px;flex:none}
 .bar div{height:100%;background:linear-gradient(90deg,var(--accent),var(--accent-2))}
+.field{width:100%;border:0;background:var(--card);box-shadow:inset 0 0 0 1px var(--line);border-radius:14px;padding:12px 14px;outline:none;font:inherit;font-size:16px;color:var(--ink)}
+.field:focus{box-shadow:inset 0 0 0 2px var(--accent)}
+textarea.field{min-height:160px;line-height:1.5;resize:vertical}
+.flabel{display:block;font-size:13px;font-weight:700;color:var(--muted);margin:16px 2px 6px;text-transform:uppercase;letter-spacing:.05em}
+.hint{font-size:12.5px;color:var(--muted);margin:6px 2px 0}
+.editbar{position:sticky;top:0;z-index:10;display:flex;align-items:center;gap:8px;margin:calc(-14px - var(--safe-t)) -18px 8px;padding:calc(var(--safe-t) + 10px) 18px 10px;background:color-mix(in srgb,var(--bg) 88%,transparent);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px)}
 .hello{color:var(--muted);font-weight:600;font-size:15px;margin-top:4px}
 .surprise{display:flex;align-items:center;gap:14px;width:100%;border:0;border-radius:var(--r);padding:16px;margin:4px 0 18px;text-align:left;color:#fff;
   background:radial-gradient(120% 140% at 100% 0%,#5EEAD4 0%,transparent 55%),linear-gradient(135deg,#0F9D6E,#0B7A8C);box-shadow:0 10px 26px rgba(15,157,110,.28)}
@@ -255,7 +261,7 @@ async function speichern(records){
 function route(){ const h=(location.hash||"#/entdecken").slice(2).split("/"); return { v:h[0]||"entdecken", id:h[1]||"" }; }
 function go(h){ S.fresh = true; location.hash = h; }
 function goTab(k){
-  const v = route().v; const fam = ["entdecken","rezept","zufall"];
+  const v = route().v; const fam = ["entdecken","rezept","zufall","bearbeiten"];
   if(k==="entdecken"){ if(fam.includes(v)) go("#/entdecken"); else { S.fresh=false; location.hash = S.lastRez || "#/entdecken"; } }
   else { S.fresh=false; location.hash = "#/"+k; }
 }
@@ -273,16 +279,16 @@ const IC = {"entdecken": "<svg viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"curr
 function tabbar(v){
   const t=[["entdecken",IC.entdecken,"Rezepte"],["plan",IC.plan,"Plan"],["kuehlschrank",IC.kuehlschrank,"Kühlschrank"],["einkauf",IC.einkauf,"Einkauf"]];
   const n = einkaufListe().filter(x=>!S.haken.has(x.key)).length;
-  $("#tabbar").innerHTML = t.map(([k,i,l]) => `<button class="${(v===k||((v==="rezept"||v==="zufall")&&k==="entdecken"))?"on":""}" onclick="goTab('${k}')"><span class="i">${i}</span>${l}${k==="einkauf"&&n? `<span class="cnt">${n}</span>`:""}</button>`).join("");
+  $("#tabbar").innerHTML = t.map(([k,i,l]) => `<button class="${(v===k||((v==="rezept"||v==="zufall"||v==="bearbeiten")&&k==="entdecken"))?"on":""}" onclick="goTab('${k}')"><span class="i">${i}</span>${l}${k==="einkauf"&&n? `<span class="cnt">${n}</span>`:""}</button>`).join("");
   $("#tabbar").style.display = (S.key && v!=="kochen")? "flex" : "none";
 }
 
 function render(){
-  const r = route(); if(["entdecken","rezept","zufall"].includes(r.v)) S.lastRez = location.hash || "#/entdecken"; tabbar(r.v);
+  const r = route(); if(["entdecken","rezept","zufall","bearbeiten"].includes(r.v)) S.lastRez = location.hash || "#/entdecken"; tabbar(r.v);
   const app = $("#app");
   if(!S.key) return app.innerHTML = vSetup();
   if(r.v!=="kochen" && S.cook){ stopCook(); }
-  const views = { zufall:vZufall, entdecken:vEntdecken, rezept:vRezept, plan:vPlan, kuehlschrank:vKuehl, einkauf:vEinkauf, kochen:vKochen };
+  const views = { bearbeiten:vBearbeiten, zufall:vZufall, entdecken:vEntdecken, rezept:vRezept, plan:vPlan, kuehlschrank:vKuehl, einkauf:vEinkauf, kochen:vKochen };
   app.innerHTML = (views[r.v]||vEntdecken)(r.id);
   if(r.v==="kochen") afterCook();
 }
@@ -335,7 +341,7 @@ function vEntdecken(){
     <input class="search" placeholder="Suchen: Name oder Zutat …" value="${esc(S.q)}" oninput="S.q=this.value;upd()" id="q">
     <div class="chips" style="margin-top:10px">${ch("haupt","Hauptgerichte")}${ch("mealprep","🥡 Mealprep")}${ch("fav","❤️ Favoriten")}${ch("schnell","≤ 30 Min.")}${ch("einfach","einfach")}${ch("foto","📷 mit Foto")}</div>
     <div class="chips"><button class="chip ${!S.kat?"on":""}" onclick="S.kat='';render()">Alle</button>${kats.map(k=>`<button class="chip ${S.kat===k?"on":""}" onclick="S.kat=${esc(JSON.stringify(k))};render()">${EMOJI[k]||""} ${esc(k)}</button>`).join("")}</div>
-    <div class="row" style="margin:6px 0 12px;min-height:36px"><span class="muted small" style="font-weight:600">${liste.length} Rezepte</span><span class="spacer"></span>${filterAktiv()? `<button class="btn ghost small" style="padding:8px 4px" onclick="filterReset()">✕ Alle Filter löschen</button>`:""}</div>
+    <div class="row" style="margin:6px 0 12px;min-height:36px"><span class="muted small" style="font-weight:600">${liste.length} Rezepte</span><span class="spacer"></span>${filterAktiv()? `<button class="btn ghost small" style="padding:8px 4px" onclick="filterReset()">✕ Alle Filter löschen</button>` : `<button class="btn ghost small" style="padding:8px 4px" onclick="go('#/bearbeiten/neu')">＋ Neues Rezept</button>`}</div>
     <div id="liste">${liste.length? `<div class="grid">${liste.map(karte).join("")}</div>` : `<div class="empty">${S.rezepte.length? "Nichts gefunden." : (S.fehler? esc(S.fehler) : "Lade Rezepte …")}</div>`}</div>`;
 }
 function upd(){ const l=gefiltert(); $("#liste").innerHTML = l.length? `<div class="grid">${l.map(karte).join("")}</div>` : `<div class="empty">Nichts gefunden.</div>`; }
@@ -439,7 +445,7 @@ function vRezept(id){
   const hero = f? `background-image:url('${esc(f.voll||f.url)}')` : tintBg(r.kategorie);
   return `<div class="hero" style="${hero}">${f?"":(EMOJI[r.kategorie]||"🍴")}
       <div class="nav"><button class="icon-btn" onclick="history.length>1?history.back():go('#/entdecken')">‹</button>
-      <button class="icon-btn" onclick="fav('${id}')">${r.favorit?"❤️":"🤍"}</button></div></div>
+      <div class="row"><button class="icon-btn" onclick="go('#/bearbeiten/${id}')" title="Bearbeiten">✏️</button><button class="icon-btn" onclick="fav('${id}')">${r.favorit?"❤️":"🤍"}</button></div></div></div>
     <div class="sheetTop">
     ${r.fotos&&r.fotos.length>1? `<div class="thumbs">${r.fotos.map((x,i)=>`<img src="${esc(x.url)}" class="${i===fi?"on":""}" onclick="S.foto['${id}']=${i};render()" alt="">`).join("")}</div>`:""}
     <h1 style="margin-top:4px">${esc(r.name)}</h1>
@@ -490,6 +496,99 @@ function verkleinern(file, max, q){
   });
 }
 
+
+// ---------- Rezept bearbeiten / neu ----------
+const EINHEITEN = ["g","kg","ml","l","EL","TL","Prise","Prisen","Stück","Dose","Dosen","Packung","Packungen","Päckchen","Handvoll","Bund","Schuss","Zweig","Zweige","Scheibe","Scheiben","Blätter","Blatt","Tasse","Tassen","Glas","Becher","Zehe","Zehen","cm","Msp."];
+const BRUCH = {"½":0.5,"¼":0.25,"¾":0.75,"⅓":1/3,"⅔":2/3};
+function zahlText(m){ if(m==null) return ""; const v=Math.round(m*100)/100; return String(v).replace(".",","); }
+function zutatenZuText(zs){
+  let g=null; const out=[];
+  for(const z of zs){
+    if((z.g||"")!==g){ g=z.g||""; if(out.length) out.push(""); if(g) out.push(g+":"); }
+    out.push([zahlText(z.m), z.e||"", z.z+(z.n? ", "+z.n : "")].filter(Boolean).join(" ") + (z.v? " *" : ""));
+  }
+  return out.join("\n");
+}
+function parseMenge(t){
+  t=t.trim(); let m=t.match(/^(\d+)\s*([½¼¾⅓⅔])$/); if(m) return +m[1]+BRUCH[m[2]];
+  if(BRUCH[t]!=null) return BRUCH[t];
+  m=t.match(/^(\d+)\/(\d+)$/); if(m) return +m[1]/+m[2];
+  m=t.match(/^(\d+(?:[.,]\d+)?)(?:\s*[-–]\s*\d+(?:[.,]\d+)?)?$/); if(m) return parseFloat(m[1].replace(",","."));
+  return null;
+}
+function textZuZutaten(text){
+  const out=[]; let g="", leer=false;
+  for(let line of text.split("\n")){
+    line=line.trim(); if(!line){ leer=true; continue; }
+    if(/:$/.test(line)){ g=line.slice(0,-1).trim(); leer=false; continue; }
+    if(leer){ g=""; leer=false; }
+    let v=false; if(/\s*\*$/.test(line)){ v=true; line=line.replace(/\s*\*$/,""); }
+    let m=null, e="", rest=line;
+    const mm = rest.match(/^((?:\d+\s*[½¼¾⅓⅔])|[½¼¾⅓⅔]|\d+\/\d+|\d+(?:[.,]\d+)?(?:\s*[-–]\s*\d+(?:[.,]\d+)?)?)\s*(.*)$/);
+    if(mm){ m=parseMenge(mm[1]); rest=mm[2]; }
+    const em = rest.match(/^(\S+)\s+(.+)$/);
+    if(em){ const u=EINHEITEN.find(x=>x.toLowerCase()===em[1].toLowerCase().replace(/\.$/, "") || x.toLowerCase()===em[1].toLowerCase()); if(u){ e=u; rest=em[2]; } }
+    let z=rest, n="";
+    const k=rest.indexOf(","); if(k>0){ z=rest.slice(0,k).trim(); n=rest.slice(k+1).trim(); }
+    const o={ m, e, z }; if(n) o.n=n; if(g) o.g=g; if(v) o.v=1;
+    if(z) out.push(o);
+  }
+  return out;
+}
+function dauerAus(t){
+  const m=t.match(/(\d+(?:[.,]\d+)?)(?:\s*(?:-|–|bis)\s*(\d+(?:[.,]\d+)?))?\s*(Sekunden|Sek\.?|Minuten|Min\.?|Stunden|Stunde|Std\.?)/i);
+  if(!m) return 0; const v=parseFloat((m[2]||m[1]).replace(",","."));
+  const u=m[3].toLowerCase(); return Math.round(v*(u.startsWith("sek")?1:u.startsWith("min")?60:3600));
+}
+function vBearbeiten(id){
+  const neu = id==="neu"; const r = neu? null : byId(id);
+  if(!neu && !r) return `<div class="empty">Rezept nicht gefunden.</div>`;
+  if(!S.edit || S.edit.id!==id){
+    S.edit = { id, name: r?r.name:"", kategorie: r?r.kategorie:"", zeit: r&&r.zeit||"", portionen: r&&r.portionen||2, schwierigkeit: r?r.schwierigkeit||"einfach":"einfach",
+      mealprep: r?!!r.mealprep:false, zutaten: r? zutatenZuText(r.zutaten) : "", schritte: r? r.schritte.map(x=>x.t).join("\n") : "", haupt: r? r.hauptzutaten.join(", ") : "" };
+  }
+  const e=S.edit; const kats=[...new Set(S.rezepte.map(x=>x.kategorie).filter(Boolean))].sort((a,b)=>a.localeCompare(b,"de"));
+  const set = k => `oninput="S.edit.${k}=this.value"`;
+  return `<div class="editbar"><button class="btn ghost" style="padding:8px 0" onclick="editAbbrechen()">Abbrechen</button><span class="spacer"></span><b>${neu?"Neues Rezept":"Bearbeiten"}</b><span class="spacer"></span><button class="btn primary" style="padding:9px 16px" id="saveBtn" onclick="editSpeichern()">Speichern</button></div>
+  <label class="flabel">Name</label><input class="field" value="${esc(e.name)}" ${set("name")} placeholder="z. B. Linsen-Curry">
+  <label class="flabel">Kategorie</label><input class="field" list="katList" value="${esc(e.kategorie)}" ${set("kategorie")} placeholder="z. B. Asiatisch"><datalist id="katList">${kats.map(k=>`<option value="${esc(k)}">`).join("")}</datalist>
+  <div class="row" style="gap:12px"><div style="flex:1"><label class="flabel">Zeit (Min.)</label><input class="field" type="number" inputmode="numeric" value="${esc(e.zeit)}" ${set("zeit")}></div>
+    <div style="flex:1"><label class="flabel">Portionen</label><input class="field" type="number" inputmode="numeric" value="${esc(e.portionen)}" ${set("portionen")}></div></div>
+  <label class="flabel">Schwierigkeit</label><div class="seg">${["einfach","mittel","schwer"].map(x=>`<button class="${e.schwierigkeit===x?"on":""}" onclick="S.edit.schwierigkeit='${x}';render()">${x}</button>`).join("")}</div>
+  <div class="row" style="margin-top:14px"><button class="chip ${e.mealprep?"on":""}" onclick="S.edit.mealprep=!S.edit.mealprep;render()">🥡 Mealprep-geeignet</button></div>
+  <label class="flabel">Zutaten</label><textarea class="field" rows="${Math.max(8,e.zutaten.split("\n").length+1)}" ${set("zutaten")} placeholder="200 g Mehl&#10;2 EL Olivenöl, extra vergine *&#10;1 Stück Zwiebel, gewürfelt&#10;&#10;Für die Soße:&#10;400 ml Kokosmilch">${esc(e.zutaten)}</textarea>
+  <p class="hint">Eine Zutat pro Zeile: Menge, Einheit, Name, nach dem Komma eine Notiz. Ein <b>*</b> am Ende markiert Vorrat (kommt nicht auf die Einkaufsliste). Zeilen mit Doppelpunkt am Ende sind Zwischenüberschriften.</p>
+  <label class="flabel">Zubereitung</label><textarea class="field" rows="${Math.max(8,e.schritte.split("\n").length+2)}" ${set("schritte")} placeholder="Ofen auf 200 °C vorheizen.&#10;Gemüse schneiden und 25 Minuten rösten.">${esc(e.schritte)}</textarea>
+  <p class="hint">Ein Schritt pro Zeile. Zeitangaben wie „25 Minuten“ werden im Kochmodus automatisch zum Timer.</p>
+  <label class="flabel">Hauptzutaten (für den Kühlschrank-Check)</label><input class="field" value="${esc(e.haupt)}" ${set("haupt")} id="hauptIn" placeholder="z. B. kichererbse, spinat, kokosmilch">
+  <button class="btn ghost small" style="padding:8px 2px" onclick="hauptVorschlag()">Aus Zutaten vorschlagen</button>
+  <div style="height:30px"></div>`;
+}
+function hauptVorschlag(){
+  const zs=textZuZutaten(S.edit.zutaten).filter(z=>!z.v);
+  S.edit.haupt=[...new Set(zs.map(z=>z.z.toLowerCase().replace(/^(frische[rn]?|gehackte[rn]?|getrocknete[rn]?|rote[rn]?|gelbe[rn]?|grüne[rn]?|weiße[rn]?)\s+/,"").trim()))].slice(0,10).join(", ");
+  render();
+}
+function editAbbrechen(){ const id=S.edit&&S.edit.id; S.edit=null; history.length>1? history.back() : go(id&&id!=="neu"? "#/rezept/"+id : "#/entdecken"); }
+async function editSpeichern(){
+  const e=S.edit; const neu=e.id==="neu"; const r=neu? null : byId(e.id);
+  const name=e.name.trim(); if(!name) return toast("Bitte einen Namen eingeben.");
+  if(S.rezepte.some(x=>x.name.trim().toLowerCase()===name.toLowerCase() && x.id!==e.id)) return toast("Es gibt schon ein Rezept mit diesem Namen.");
+  const zutaten=textZuZutaten(e.zutaten);
+  const alt = new Map((r? r.schritte : []).map(x=>[x.t, x.s]));
+  const schritte=e.schritte.split("\n").map(t=>t.trim().replace(/^\d+[.)]\s*/,"")).filter(Boolean).map(t=>{ const s = alt.has(t)? alt.get(t) : dauerAus(t); return s? {t,s} : {t}; });
+  const haupt=e.haupt.split(",").map(x=>x.trim().toLowerCase()).filter(Boolean);
+  const fields={ "Name":name, "Kategorie": e.kategorie.trim()||null, "Zubereitungszeit (Min.)": parseInt(e.zeit)||null, "Portionen": parseInt(e.portionen)||null,
+    "Schwierigkeit": e.schwierigkeit||null, "Mealprep": !!e.mealprep, "Zutaten (JSON)": JSON.stringify(zutaten), "Schritte (JSON)": JSON.stringify(schritte), "Hauptzutaten": haupt.join(", ") };
+  const b=$("#saveBtn"); b.disabled=true; b.innerHTML='<span class="spin"></span>';
+  try {
+    await api("speichern", { records: [ neu? { fields } : { id:e.id, fields } ] });
+    S.edit=null; await laden(true);
+    const x = S.rezepte.find(y=>y.name.trim().toLowerCase()===name.toLowerCase());
+    toast(neu? "Rezept angelegt ✓" : "Gespeichert ✓");
+    S.fresh=true; location.replace(x? "#/rezept/"+x.id : "#/entdecken");
+  } catch(err){ toast("Nicht gespeichert: "+err.message, 4500); b.disabled=false; b.textContent="Speichern"; }
+}
 // ---------- Kochmodus ----------
 function vKochen(id){
   const r = byId(id); if(!r) return "";
