@@ -775,6 +775,7 @@ async function senden(){
   const b=$("#sendBtn"); b.disabled=true; b.innerHTML='<span class="spin"></span> Wird gesendet …';
   try {
     const j = await api("einkauf", { artikel });
+    if(j.fehlgeschlagen){ toast(`${j.angelegt} angelegt, ${j.fehlgeschlagen} nicht – bitte nochmal senden.`, 5000); b.disabled=false; b.textContent="Nochmal versuchen"; return; }
     toast(`✓ ${j.angelegt} Artikel in To Do angelegt` + (j.schon_auf_liste&&j.schon_auf_liste.length? `, ${j.schon_auf_liste.length} standen schon drauf` : ""), 4000);
     einkaufListe().forEach(x=>S.haken.add(x.key)); store.set("haken",[...S.haken]); S.extra=[]; store.set("extra",[]); S.korb=[]; store.set("korb",[]); render();
   } catch(e){ toast("Senden fehlgeschlagen: "+e.message, 4500); b.disabled=false; b.textContent="Nochmal versuchen"; }
