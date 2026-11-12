@@ -7,8 +7,8 @@
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="apple-mobile-web-app-title" content="Rezepte">
-<meta name="theme-color" content="#F5F7F6" media="(prefers-color-scheme: light)">
-<meta name="theme-color" content="#0B0F0E" media="(prefers-color-scheme: dark)">
+<meta name="theme-color" content="#F5F7F6" id="themeColor">
+<script>(function(){var m="auto";try{m=JSON.parse(localStorage.getItem("rb_theme"))||"auto"}catch(e){}var d=m==="dunkel"||(m==="auto"&&matchMedia("(prefers-color-scheme: dark)").matches);document.documentElement.classList.toggle("dark",d);document.getElementById("themeColor").content=d?"#0B0F0E":"#F5F7F6";})();</script>
 <link rel="apple-touch-icon" href="icon-180.png">
 <link rel="manifest" href="manifest.webmanifest">
 <title>Unser Rezeptbuch</title>
@@ -21,12 +21,12 @@
   --tm:100%;--r:20px;
   --safe-b:env(safe-area-inset-bottom,0px);--safe-t:env(safe-area-inset-top,0px);
 }
-@media (prefers-color-scheme:dark){:root{
+html.dark{color-scheme:dark;
   --bg:#0B0F0E;--card:#151B19;--ink:#ECF3F0;--muted:#8A9A94;--line:#232C29;--line2:#1C2422;
   --accent:#22C995;--accent-2:#4BE0AF;--accent-soft:#12302A;--accent-ink:#04140F;
   --green:#22C995;--green-soft:#12302A;--amber:#F2B544;--amber-soft:#2E2512;--red:#FF6B6B;--red-soft:#3A1A1B;
-  --shadow:0 1px 0 rgba(255,255,255,.03);--shadow-lg:0 12px 40px rgba(0,0,0,.5);--tm:42%;}}
-@media (prefers-color-scheme:dark){[style*="linear-gradient(140deg"]{background:radial-gradient(120% 120% at 100% 0%,rgba(34,201,149,.22),transparent 60%),linear-gradient(140deg,#17302A,#141E26)!important}}
+  --shadow:0 1px 0 rgba(255,255,255,.03);--shadow-lg:0 12px 40px rgba(0,0,0,.5);--tm:42%;}
+html.dark [style*="linear-gradient(140deg"]{background:radial-gradient(120% 120% at 100% 0%,rgba(34,201,149,.22),transparent 60%),linear-gradient(140deg,#17302A,#141E26)!important}
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
 html,body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.45 -apple-system,BlinkMacSystemFont,"SF Pro Text","Inter",system-ui,sans-serif;-webkit-font-smoothing:antialiased}
 button,input,select{font:inherit;color:inherit}
@@ -204,6 +204,21 @@ function picStyle(r){ const f=r.fotos&&r.fotos[0]; return f? `background-image:u
 function picEmoji(r){ return r.fotos&&r.fotos.length? "" : (EMOJI[r.kategorie]||"🍴"); }
 function diffBadge(r){ const c={einfach:"",mittel:"amber",schwer:"red"}[r.schwierigkeit]; return r.schwierigkeit? `<span class="badge ${c}">${esc(r.schwierigkeit)}</span>` : ""; }
 
+// ---------- Design ----------
+S.theme = store.get("theme","auto");
+const mq = matchMedia("(prefers-color-scheme: dark)");
+function applyTheme(){ const d = S.theme==="dunkel" || (S.theme==="auto" && mq.matches); document.documentElement.classList.toggle("dark", d); const m=$("#themeColor"); if(m) m.content = d? "#0B0F0E" : "#F5F7F6"; }
+mq.addEventListener ? mq.addEventListener("change", applyTheme) : mq.addListener(applyTheme);
+function setTheme(t){ S.theme=t; store.set("theme",t); applyTheme(); const sh=document.querySelector(".sheet"); if(sh){ sh.querySelectorAll("[data-t]").forEach(b=>b.classList.toggle("on", b.dataset.t===t)); } render(); }
+function themeIcon(){ const d = document.documentElement.classList.contains("dark"); return d? "🌙" : "☀️"; }
+function themeSheet(){
+  const d=document.createElement("div"); d.className="sheet"; d.onclick=e=>{ if(e.target===d) d.remove(); };
+  d.innerHTML=`<div class="in"><h2 style="margin-top:4px">Darstellung</h2>
+    <div class="seg">${[["hell","☀️ Hell"],["dunkel","🌙 Dunkel"],["auto","⚙️ Automatisch"]].map(([k,l])=>`<button data-t="${k}" class="${S.theme===k?"on":""}" onclick="setTheme('${k}')">${l}</button>`).join("")}</div>
+    <p class="muted small" style="margin:10px 2px 14px">„Automatisch“ folgt der Einstellung des iPhones.</p>
+    <button class="btn block" onclick="this.closest('.sheet').remove()">Fertig</button></div>`;
+  document.body.appendChild(d);
+}
 // ---------- Schnittstelle ----------
 async function api(aktion, daten={}){
   const body = new URLSearchParams({ payload: JSON.stringify(Object.assign({ key: S.key, aktion }, daten)) });
@@ -303,7 +318,7 @@ function vEntdecken(){
   const liste = gefiltert(); const f=S.filter;
   const ch = (k,l) => `<button class="chip ${f[k]?"on":""}" onclick="tog('${k}')">${l}</button>`;
   const std=new Date().getHours(); const gruss = std<11? "Guten Morgen" : std<17? "Hallo" : "Guten Abend";
-  return `<div class="row" style="align-items:flex-start"><div style="flex:1"><div class="hello">${gruss} 👋</div><h1 style="margin-top:2px">Was kochen wir?</h1></div>${S.laden?'<span class="spin" style="margin-top:14px"></span>':`<button class="icon-btn" title="Aktualisieren" onclick="laden()">↻</button>`}</div>
+  return `<div class="row" style="align-items:flex-start"><div style="flex:1"><div class="hello">${gruss} 👋</div><h1 style="margin-top:2px;font-size:29px">Was kochen wir?</h1></div><div class="row"><button class="icon-btn" title="Darstellung" onclick="themeSheet()">${themeIcon()}</button>${S.laden?'<span class="spin" style="margin:0 13px"></span>':`<button class="icon-btn" title="Aktualisieren" onclick="laden()">↻</button>`}</div></div>
     <button class="surprise" onclick="zfStart()"><div class="big">🎲</div><div><b>Überrasch mich</b><span>Art des Gerichts & Wunschzutaten wählen</span></div></button>
     <input class="search" placeholder="Suchen: Name oder Zutat …" value="${esc(S.q)}" oninput="S.q=this.value;upd()" id="q">
     <div class="chips" style="margin-top:10px">${ch("haupt","Hauptgerichte")}${ch("mealprep","🥡 Mealprep")}${ch("fav","❤️ Favoriten")}${ch("schnell","≤ 30 Min.")}${ch("einfach","einfach")}${ch("foto","📷 mit Foto")}</div>
