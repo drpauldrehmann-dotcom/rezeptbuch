@@ -213,7 +213,7 @@ document.addEventListener("visibilitychange", () => { if(document.visibilityStat
 function tabbar(v){
   const t=[["entdecken","🔍","Entdecken"],["plan","📅","Wochenplan"],["kuehlschrank","🧊","Kühlschrank"],["einkauf","🛒","Einkauf"]];
   const n = einkaufListe().filter(x=>!S.haken.has(x.key)).length;
-  $("#tabbar").innerHTML = t.map(([k,i,l]) => `<button class="${(v===k||(v==="rezept"&&k==="entdecken"))?"on":""}" onclick="go('#/${k}')"><span class="i">${i}</span>${l}${k==="einkauf"&&n? " ("+n+")":""}</button>`).join("");
+  $("#tabbar").innerHTML = t.map(([k,i,l]) => `<button class="${(v===k||((v==="rezept"||v==="zufall")&&k==="entdecken"))?"on":""}" onclick="go('#/${k}')"><span class="i">${i}</span>${l}${k==="einkauf"&&n? " ("+n+")":""}</button>`).join("");
   $("#tabbar").style.display = (S.key && v!=="kochen")? "flex" : "none";
 }
 
@@ -222,7 +222,7 @@ function render(){
   const app = $("#app");
   if(!S.key) return app.innerHTML = vSetup();
   if(r.v!=="kochen" && S.cook){ stopCook(); }
-  const views = { entdecken:vEntdecken, rezept:vRezept, plan:vPlan, kuehlschrank:vKuehl, einkauf:vEinkauf, kochen:vKochen };
+  const views = { zufall:vZufall, entdecken:vEntdecken, rezept:vRezept, plan:vPlan, kuehlschrank:vKuehl, einkauf:vEinkauf, kochen:vKochen };
   app.innerHTML = (views[r.v]||vEntdecken)(r.id);
   if(r.v==="kochen") afterCook();
 }
@@ -273,12 +273,89 @@ function vEntdecken(){
     <input class="search" placeholder="Suchen: Name oder Zutat …" value="${esc(S.q)}" oninput="S.q=this.value;upd()" id="q">
     <div class="chips" style="margin-top:10px">${ch("haupt","Hauptgerichte")}${ch("mealprep","🥡 Mealprep")}${ch("fav","❤️ Favoriten")}${ch("schnell","≤ 30 Min.")}${ch("einfach","einfach")}${ch("foto","📷 mit Foto")}</div>
     <div class="chips"><button class="chip ${!S.kat?"on":""}" onclick="S.kat='';render()">Alle</button>${kats.map(k=>`<button class="chip ${S.kat===k?"on":""}" onclick="S.kat=${esc(JSON.stringify(k))};render()">${EMOJI[k]||""} ${esc(k)}</button>`).join("")}</div>
-    <div class="row" style="margin:4px 0 12px"><span class="muted small">${liste.length} Rezepte</span><span class="spacer"></span><button class="btn" onclick="zufall()">🎲 Überrasch mich</button></div>
+    <div class="row" style="margin:4px 0 12px"><span class="muted small">${liste.length} Rezepte</span><span class="spacer"></span><button class="btn" onclick="zfStart()">🎲 Überrasch mich</button></div>
     <div id="liste">${liste.length? `<div class="grid">${liste.map(karte).join("")}</div>` : `<div class="empty">${S.rezepte.length? "Nichts gefunden." : (S.fehler? esc(S.fehler) : "Lade Rezepte …")}</div>`}</div>`;
 }
 function upd(){ const l=gefiltert(); $("#liste").innerHTML = l.length? `<div class="grid">${l.map(karte).join("")}</div>` : `<div class="empty">Nichts gefunden.</div>`; }
 function tog(k){ S.filter[k]=!S.filter[k]; store.set("filter",S.filter); render(); }
-function zufall(){ const l=gefiltert().filter(r=>tageSeit(r.zuletzt)>14); const p=(l.length?l:gefiltert()); if(!p.length) return; go("#/rezept/"+p[Math.floor(Math.random()*p.length)].id); }
+// ---------- Überrasch mich ----------
+const ARTEN = [
+  ["haupt","🍽️","Hauptgericht", r=>HAUPT.includes(r.kategorie)],
+  ["mealprep","🥡","Mealprep", r=>r.mealprep],
+  ["fruehstueck","🥞","Frühstück", r=>r.kategorie==="Breakfast"],
+  ["suess","🍫","Süßes & Snacks", r=>["Snacks","Desserts","Ninja Creami"].includes(r.kategorie)],
+  ["backen","🥖","Backen & Brot", r=>["Backen","Brötchen/Brot"].includes(r.kategorie)],
+  ["alles","✨","Egal", r=>true]
+];
+S.zf = store.get("zf", { art:"haupt", zutaten:[], schnell:false, einfach:false });
+S.zf.q=""; S.zfSeen=[]; S.zfAkt=null;
+function zfSave(){ store.set("zf", { art:S.zf.art, zutaten:S.zf.zutaten, schnell:S.zf.schnell, einfach:S.zf.einfach }); }
+function zfPasst(r, w){ w=w.toLowerCase(); return r.hauptzutaten.some(h=>h.includes(w)) || r.zutaten.some(z=>z.z.toLowerCase().includes(w)); }
+function zfPool(){
+  const art = ARTEN.find(a=>a[0]===S.zf.art) || ARTEN[5];
+  return S.rezepte.filter(r => art[3](r) && (!S.zf.schnell || (r.zeit && r.zeit<=30)) && (!S.zf.einfach || r.schwierigkeit==="einfach"))
+    .map(r => { const treffer = S.zf.zutaten.filter(w=>zfPasst(r,w)); return { r, treffer }; })
+    .filter(x => !S.zf.zutaten.length || x.treffer.length);
+}
+function zfZiehen(){
+  const pool = zfPool(); if(!pool.length){ S.zfAkt=null; return; }
+  let frei = pool.filter(x=>!S.zfSeen.includes(x.r.id));
+  if(!frei.length){ S.zfSeen=[]; frei=pool; toast("Alle passenden Gerichte gezeigt – es geht von vorn los."); }
+  const best = Math.max(...frei.map(x=>x.treffer.length));
+  let top = frei.filter(x=>x.treffer.length===best);
+  const frisch = top.filter(x=>tageSeit(x.r.zuletzt)>14); if(frisch.length) top=frisch;
+  const gew = top.flatMap(x=> x.r.favorit? [x,x,x] : [x]);
+  const pick = gew[Math.floor(Math.random()*gew.length)];
+  S.zfSeen.push(pick.r.id); S.zfAkt = pick;
+}
+function zfStart(){ S.zfSeen=[]; S.zfAkt=null; go("#/zufall"); }
+function zfLos(){ zfSave(); S.zfSeen=[]; zfZiehen(); render(); setTimeout(()=>{ const e=$("#zfErg"); if(e) e.scrollIntoView({behavior:"smooth", block:"start"}); }, 50); }
+function zfNext(){ zfZiehen(); render(); const e=$("#zfErg"); if(e) e.scrollIntoView({block:"start"}); }
+function zfZutatAdd(w){ w=(w||"").trim().toLowerCase(); if(!w || S.zf.zutaten.includes(w)) return; S.zf.zutaten.push(w); S.zf.q=""; S.zfAkt=null; zfSave(); render(); }
+function zfZutatWeg(w){ S.zf.zutaten=S.zf.zutaten.filter(x=>x!==w); S.zfAkt=null; zfSave(); render(); }
+function zfVorschlaege(){
+  const art = ARTEN.find(a=>a[0]===S.zf.art) || ARTEN[5]; const q=S.zf.q.trim().toLowerCase();
+  const n={}; S.rezepte.filter(art[3]).forEach(r=>r.hauptzutaten.forEach(h=>n[h]=(n[h]||0)+1));
+  const BASIS=["knoblauch","zwiebel","rote zwiebel","limette","zitrone","petersilie","frühlingszwiebel","koriander","ingwer","salz","pfeffer","olivenöl"];
+  return Object.keys(n).filter(h=>!S.zf.zutaten.includes(h) && (q? h.includes(q) : !BASIS.includes(h))).sort((a,b)=>n[b]-n[a]).slice(0, q? 12 : 14);
+}
+function zfTipp(v){ S.zf.q=v; const box=$("#zfSug"); if(box) box.innerHTML = zfSugHtml(); }
+function zfSugHtml(){ return zfVorschlaege().map(h=>`<button class="chip" onclick="zfZutatAdd(${esc(JSON.stringify(h))})">＋ ${esc(h)}</button>`).join(""); }
+function vZufall(){
+  const z=S.zf, pool=zfPool(), a=S.zfAkt;
+  const res = a? (()=>{ const r=a.r; return `<div id="zfErg" style="scroll-margin-top:12px">
+    <h2>Wie wär's mit …</h2>
+    <button class="card" style="width:100%" onclick="go('#/rezept/${r.id}')">
+      <div class="pic" style="${picStyle(r)};aspect-ratio:16/10;font-size:64px">${picEmoji(r)}${r.favorit?'<span class="fav">❤️</span>':""}</div>
+      <div class="body"><div class="title" style="font-size:19px;-webkit-line-clamp:3">${esc(r.name)}</div>
+      <div class="meta" style="font-size:13px">${[esc(r.kategorie), fmtZeit(r.zeit), r.schwierigkeit, r.mealprep?"🥡 Mealprep":""].filter(Boolean).join(" · ")}</div>
+      ${a.treffer.length? `<div style="margin-top:8px">${a.treffer.map(t=>`<span class="badge" style="margin-right:4px">✓ ${esc(t)}</span>`).join("")}</div>`:""}
+      ${r.zuletzt? `<div class="meta">zuletzt gekocht ${new Date(r.zuletzt).toLocaleDateString("de-DE")}</div>`:""}</div></button>
+    <button class="btn primary block" style="margin-top:12px" onclick="zfNext()">🎲 Nächster Vorschlag</button>
+    <div class="row" style="margin-top:8px">
+      <button class="btn" style="flex:1" onclick="go('#/rezept/${r.id}')">Rezept ansehen</button>
+      <button class="btn" style="flex:1" onclick="zfPlanen('${r.id}')">📅 Einplanen</button></div>
+    <p class="muted small" style="text-align:center">${S.zfSeen.length} von ${pool.length} passenden Gerichten gezeigt</p></div>`; })()
+    : "";
+  return `<div class="row"><button class="icon-btn" onclick="go('#/entdecken')">‹</button><h1 style="flex:1;margin-left:6px">Überrasch mich</h1></div>
+  <h3>Was soll es sein?</h3>
+  <div class="row wrap">${ARTEN.map(([k,i,l])=>`<button class="chip ${z.art===k?"on":""}" onclick="S.zf.art='${k}';S.zfAkt=null;zfSave();render()">${i} ${l}</button>`).join("")}</div>
+  <div class="row wrap" style="margin-top:8px"><button class="chip ${z.schnell?"on":""}" onclick="S.zf.schnell=!S.zf.schnell;S.zfAkt=null;zfSave();render()">⏱ ≤ 30 Min.</button><button class="chip ${z.einfach?"on":""}" onclick="S.zf.einfach=!S.zf.einfach;S.zfAkt=null;zfSave();render()">einfach</button></div>
+  <h3>Lust auf bestimmte Zutaten? <span class="muted small" style="font-weight:400">(optional)</span></h3>
+  ${z.zutaten.length? `<div class="row wrap" style="margin-bottom:8px">${z.zutaten.map(w=>`<button class="chip on" onclick="zfZutatWeg(${esc(JSON.stringify(w))})">${esc(w)} ✕</button>`).join("")}</div>`:""}
+  <div class="row"><input class="search" placeholder="z. B. Süßkartoffel, Tofu …" value="${esc(z.q)}" oninput="zfTipp(this.value)" onkeydown="if(event.key==='Enter')zfZutatAdd(this.value)"><button class="btn" onclick="zfZutatAdd($('.search').value)">＋</button></div>
+  <div class="row wrap" id="zfSug" style="margin-top:8px">${zfSugHtml()}</div>
+  <p class="muted small" style="margin-top:10px">${pool.length? pool.length+" Gerichte passen"+(z.zutaten.length>1? " – die mit den meisten Wunschzutaten zuerst":"")+"." : "Keine Gerichte passen – lass eine Zutat oder einen Filter weg."}</p>
+  ${a? "" : `<button class="btn primary block" ${pool.length?"":"disabled"} onclick="zfLos()">🎲 Vorschlag zeigen</button>`}
+  ${res}<div style="height:20px"></div>`;
+}
+function zfPlanen(id){
+  const art = S.zf.art; const opts = art==="mealprep"? [["Mealprep Montag","Mealprep Mo"],["Samstag","Samstag"],["Sonntag","Sonntag"]] : [["Samstag","Samstag"],["Sonntag","Sonntag"],["Mealprep Montag","Mealprep Mo"]];
+  const d=document.createElement("div"); d.className="sheet"; d.onclick=e=>{ if(e.target===d) d.remove(); };
+  d.innerHTML=`<div class="in"><h2 style="margin-top:4px">Einplanen für …</h2>${opts.map(([k,l])=>`<button class="btn block" style="margin-bottom:8px" data-k="${k}">${l}</button>`).join("")}<button class="btn ghost block" onclick="this.closest('.sheet').remove()">Abbrechen</button></div>`;
+  d.querySelectorAll("[data-k]").forEach(b=>b.onclick=()=>{ d.remove(); planen(id, b.dataset.k); });
+  document.body.appendChild(d);
+}
 
 // ---------- Rezept ----------
 function zutatenListe(r, faktor, checkbar=false){
